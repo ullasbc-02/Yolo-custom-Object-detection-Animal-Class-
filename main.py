@@ -1,113 +1,81 @@
-import cv2 as cv
+import cv2
 import numpy as np
-from time import sleep
-import smtplib
-import imghdr
-from email.message import EmailMessage
+import matplotlib.pyplot as plt
+net = cv2.dnn.readNetFromDarknet("yolov3_custom.cfg",r"C:\Users\Admin\Downloads\yolov3_custom_last.weights")
+classes = ['leopard','lion','tiger','elephant','monkey','bear']
+cap = cv2.VideoCapture(0)
 
-Sender_Email = "vijaysakre2000@gmail.com"
-Reciever_Email = "ullasbc11@gmail.com"
-Password = "vinayaka123"
+while 1:
+    _, img = cap.read()
+    img = cv2.resize(img, (1280, 720))
+    hight, width, _ = img.shape
+    blob = cv2.dnn.blobFromImage(img, 1 / 255, (416, 416), (0, 0, 0), swapRB=True, crop=False)
 
-cap = cv.VideoCapture(0)
-whT = 320
-confThreshold = 0.5
-nmsThreshold = 0.2
-
-#### LOAD MODEL
-## Coco Names
-classesFile = "coco.names"
-classNames = []
-with open(classesFile, 'rt') as f: #open the file and read in text mode
-    classNames = f.read().rstrip('\n').split('\n')
-print(classNames)
-
-## Model Files
-modelConfiguration = "yolov3tiny.cfg"
-modelWeights = "yolov3-tiny.weights"
-net = cv.dnn.readNetFromDarknet(modelConfiguration, modelWeights)
-net.setPreferableBackend(cv.dnn.DNN_BACKEND_OPENCV)
-net.setPreferableTarget(cv.dnn.DNN_TARGET_CPU)
-
-#Take an image,save and send
-def Sendmail(frame):
-    cv.imwrite(filename='saved_img.jpg', img=frame)
-    newMessage = EmailMessage()
-    newMessage['Subject'] = "Check out the animal"
-    newMessage['From'] = Sender_Email
-    newMessage['To'] = Reciever_Email
-    newMessage.set_content('Action should be taken ASAP!')
-
-    with open('saved_img.jpg', 'rb') as f:
-        image_data = f.read()
-        image_type = imghdr.what(f.name)
-        image_name = f.name
-
-    newMessage.add_attachment(image_data, maintype='image', subtype=image_type, filename=image_name)
-
-    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-        smtp.login(Sender_Email, Password)
-        smtp.send_message(newMessage)
-
-def Task(fname,frame):
-    # print(fname)
-    fname=fname.upper()
-    if(fname=="WILD CATS" or fname=="LION" or fname=="LEOPARD"):
-        print("Take a picture and inform to forest officer via mail")
-        Sendmail(frame)
-    elif(fname=="ELEPHANT"):
-        print("bee sound buzzzz buzzz")
-        Sendmail(frame)
-    elif(fname=="BEAR"):
-        print("Caught bear")
-        Sendmail(frame)
-
-#if the probability of given object is good calling function
-def findObjects(outputs, img):
-    hT, wT, cT = img.shape
-    bbox = [] #bounding box contains x,y,width,height
-    classIds = [] #contains all class IDs
-    confs = [] #confidence values
-    for output in outputs:
-        for det in output:
-            scores = det[5:] #remove first 5 elements
-            classId = np.argmax(scores) #max score in the object
-            confidence = scores[classId]
-            if confidence > confThreshold:
-                w, h = int(det[2] * wT), int(det[3] * hT) #width and height of an image
-                x, y = int((det[0] * wT) - w / 2), int((det[1] * hT) - h / 2)
-                bbox.append([x, y, w, h])
-                classIds.append(classId)
-                confs.append(float(confidence))
-    # print(len(bbox))
-    indices = cv.dnn.NMSBoxes(bbox, confs, confThreshold, nmsThreshold) #eliminates overlapping boxes
-
-    for i in indices:
-        i = indices[0]
-        box = bbox[indices[0]]
-        x, y, w, h = box[0], box[1], box[2], box[3]
-        # print(x,y,w,h)
-        cv.rectangle(img, (x, y), (x + w, y + h), (0, 255, 0), 2) #bounding box
-        cv.putText(img, f'{classNames[classIds[i]].upper()} {int(confs[i] * 100)}%',
-                   (x, y - 10), cv.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-        Task(classNames[classIds[i]], img)
-
-
-while True:
-    success, img = cap.read()
-
-    blob = cv.dnn.blobFromImage(img, 1 / 255, (whT, whT), [0, 0, 0], 1, crop=False) #image is converted to blob format
     net.setInput(blob)
-    layersNames = net.getLayerNames()
-    # print(layersNames)
-    #85 specifications will be having in layer
-    outputNames = [(layersNames[i - 1]) for i in net.getUnconnectedOutLayers()]
-    outputs = net.forward(outputNames)
-    findObjects(outputs, img)
 
-    cv.imshow('Image', img)
-    cv.waitKey(1)
-    k = cv.waitKey(1) & 0xFF
-    # press 'q' to exit
-    if k == ord('q'):
+    output_layers_name = net.getUnconnectedOutLayersNames()
+
+    layerOutputs = net.forward(output_layers_name)
+
+    boxes = []
+    confidences = []
+    class_ids = []
+
+    for output in layerOutputs:
+        for detection in output:
+            score = detection[5:]
+            class_id = np.argmax(score)
+            confidence = score[class_id]
+            if confidence > 0.7:
+                center_x = int(detection[0] * width)
+                center_y = int(detection[1] * hight)
+                w = int(detection[2] * width)
+                h = int(detection[3] * hight)
+                x = int(center_x - w / 2)
+                y = int(center_y - h / 2)
+                boxes.append([x, y, w, h])
+                confidences.append((float(confidence)))
+                class_ids.append(class_id)
+
+    indexes = cv2.dnn.NMSBoxes(boxes, confidences, .5, .4)
+
+    boxes = []
+    confidences = []
+    class_ids = []
+
+    for output in layerOutputs:
+        for detection in output:
+            score = detection[5:]
+            class_id = np.argmax(score)
+            confidence = score[class_id]
+            if confidence > 0.5:
+                center_x = int(detection[0] * width)
+                center_y = int(detection[1] * hight)
+                w = int(detection[2] * width)
+                h = int(detection[3] * hight)
+
+                x = int(center_x - w / 2)
+                y = int(center_y - h / 2)
+
+                boxes.append([x, y, w, h])
+                confidences.append((float(confidence)))
+                class_ids.append(class_id)
+
+    indexes = cv2.dnn.NMSBoxes(boxes, confidences, .8, .4)
+    font = cv2.FONT_HERSHEY_PLAIN
+    colors = np.random.uniform(0, 255, size=(len(boxes), 3))
+    if len(indexes) > 0:
+        for i in indexes.flatten():
+            x, y, w, h = boxes[i]
+            label = str(classes[class_ids[i]])
+            confidence = str(round(confidences[i], 2))
+            color = colors[i]
+            cv2.rectangle(img, (x, y), (x + w, y + h), color, 2)
+            cv2.putText(img, label + " " + confidence, (x, y + 400), font, 2, color, 2)
+
+    cv2.imshow('img', img)
+    if cv2.waitKey(1) == ord('q'):
         break
+
+cap.release()
+cv2.destroyAllWindows()
